@@ -257,6 +257,18 @@ func waitStarterIdle(t *testing.T, ag *CodexAgent) {
 	t.Fatal("starter ping still in flight")
 }
 
+// waitDelivered waits for at least want webhook deliveries, which follow a
+// ping's release, then briefly for any extra ones, and returns them all.
+func waitDelivered(t *testing.T, delivered func() []string, want int) []string {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for len(delivered()) < want && time.Now().Before(deadline) {
+		time.Sleep(5 * time.Millisecond)
+	}
+	time.Sleep(100 * time.Millisecond)
+	return delivered()
+}
+
 // autoStartPoll feeds one poll's quotas to maybeAutoStartWindows at now and
 // waits for any ping it fired. resets maps window name to its reset time.
 func autoStartPoll(t *testing.T, ag *CodexAgent, now time.Time, resets map[string]time.Time) {
@@ -356,7 +368,7 @@ func TestCodexAgent_MaybeAutoStart_OnePingPerWindowStart(t *testing.T) {
 	if got := count.Load(); got != 1 {
 		t.Errorf("starter fired %d times after the window started, want 1", got)
 	}
-	if events := delivered(); len(events) != 1 || events[0] != notify.EventStarterSuccess {
+	if events := waitDelivered(t, delivered, 1); len(events) != 1 || events[0] != notify.EventStarterSuccess {
 		t.Errorf("delivered events = %v, want one %s", events, notify.EventStarterSuccess)
 	}
 
@@ -419,7 +431,7 @@ func TestCodexAgent_MaybeAutoStart_OnePingForBothWindows(t *testing.T) {
 	if got := count.Load(); got != 1 {
 		t.Errorf("starter fired %d times for two unstarted windows, want 1", got)
 	}
-	if events := delivered(); len(events) != 2 {
+	if events := waitDelivered(t, delivered, 2); len(events) != 2 {
 		t.Errorf("delivered events = %v, want one success per window", events)
 	}
 }
@@ -573,7 +585,7 @@ func TestCodexAgent_MaybeAutoStart_RateCappedSendsNoEvent(t *testing.T) {
 		autoStartPoll(t, ag, now, map[string]time.Time{"five_hour": now.Add(5 * time.Hour)})
 	}
 
-	if got := len(delivered()); got != codexStarterMaxFires {
+	if got := len(waitDelivered(t, delivered, codexStarterMaxFires)); got != codexStarterMaxFires {
 		t.Errorf("delivered %d events, want %d (rate-capped pings send nothing)", got, codexStarterMaxFires)
 	}
 }
