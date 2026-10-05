@@ -90,7 +90,7 @@ On `go.sum` changes, update `vendorHash` in `flake.nix` (run `nix build .#onwatc
 
 **Anthropic Rate Limit Bypass:** Anthropic's usage API has aggressive rate limits (~5 requests per token, then 429 for ~5 min). onWatch bypasses this by refreshing the OAuth token when rate limited - each new access token gets a fresh rate limit window. Implementation details:
 - `internal/agent/anthropic_agent.go`: Detects 429, calls `RefreshAnthropicToken`, saves new tokens, retries
-- `internal/api/anthropic_oauth.go`: OAuth token refresh endpoint (`console.anthropic.com/v1/oauth/token`)
+- `internal/api/anthropic_oauth.go`: OAuth token refresh endpoint (`platform.claude.com/v1/oauth/token`). Sends a `claude-cli/<version> (external, cli)` User-Agent - the endpoint 429s every `claude-code/2.1.x` UA before reading the token. Both Anthropic clients share `claudeCodeVersion`; bump it with new Claude Code releases, along with the literal UAs in `anthropic_client_test.go` and `anthropic_oauth_request_test.go` ([issue #145](https://github.com/onllm-dev/onWatch/issues/145))
 - `internal/api/anthropic_token_unix.go`: Writes to macOS Keychain + file for persistence
 - `internal/api/anthropic_token_windows.go`: Writes to credentials file
 - Refresh tokens are one-time use (OAuth rotation) - MUST save new refresh token after each refresh
