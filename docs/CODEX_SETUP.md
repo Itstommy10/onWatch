@@ -333,8 +333,16 @@ How it works:
   window`, so the countdown stays pinned at ~the full length (e.g. a 5h window
   shows ~4h59m and does not tick down). Once a turn is sent, the reset time
   becomes fixed and the countdown starts decreasing. After each poll onWatch
-  checks the freshly polled reset time: if a window still looks unstarted and its
-  toggle is on, it fires a starter.
+  compares the freshly polled reset time with the previous poll's: if a window
+  looks unstarted, its reset time moved forward by the time between the polls,
+  and its toggle is on, it fires a starter. A just-started window still shows
+  nearly the full countdown, but its reset time no longer moves, so it is not
+  pinged again. A window seen for the first time (e.g. right after a restart or
+  a reset) waits one poll for that comparison.
+- **One ping for all windows.** A turn counts against both the 5h and weekly
+  windows, so when both look unstarted a single ping starts them, with one
+  notification per enabled window. The ping also starts an unstarted window
+  whose toggle is off.
 - **The request.** A minimal call to the ChatGPT-backed Codex Responses endpoint
   (`/backend-api/codex/responses`) using your existing OAuth token, asking the
   model to reply with the short string `Quota Resumed`.
@@ -346,10 +354,10 @@ How it works:
   reads the SSE stream to completion (through `response.completed`) so the turn
   commits and the window starts. The extra read costs only the few output tokens
   of "Quota Resumed" (see Cost below).
-- **Rate cap.** Re-evaluated every poll (so a failed start retries at your
-  polling cadence), but hard-capped to **5 pings per rolling 4 hours per window**.
-  A successful start makes the window no longer look unstarted, so it normally
-  fires once. The cap is a backstop against loops/failed starts.
+- **Rate cap.** Re-evaluated every poll (a failed start retries every second
+  poll, since the poll right after a ping cannot tell), but hard-capped to
+  **5 pings per rolling 4 hours per account**. A successful start makes the
+  window no longer look unstarted, so it normally fires once. The cap is a backstop against loops/failed starts.
 - Failures are logged (`~/.onwatch/data/.onwatch.log`) and never retried beyond
   the cap.
 
@@ -369,7 +377,7 @@ So the quota/token cost is negligible:
   when it would otherwise sit unstarted) and ~1/week for the weekly window. That
   is roughly **~300 tokens/day** at most for the 5h window.
 - **Worst case** (a start that never "takes" and keeps hitting the rate cap):
-  5 pings per 4h per window, i.e. ~30/day for the 5h window - still under
+  5 pings per 4h per account, i.e. ~30/day - still under
   ~2,000 tokens/day.
 - Against the tracked quota itself, a single start registers as **less than 1%**
   of the window.

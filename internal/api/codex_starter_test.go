@@ -92,7 +92,7 @@ func TestSendStarterPing_Success(t *testing.T) {
 		headers <- r.Header.Clone()
 		w.Header().Set("Content-Type", "text/event-stream")
 		w.WriteHeader(http.StatusOK)
-		_, _ = io.WriteString(w, "data: {}\n\n")
+		_, _ = io.WriteString(w, "event: response.completed\ndata: {}\n\n")
 	}))
 	defer srv.Close()
 
@@ -147,6 +147,71 @@ func TestSendStarterPing_ServerError(t *testing.T) {
 	err := client.SendStarterPing(context.Background(), "acct")
 	if !errors.Is(err, ErrCodexServerError) {
 		t.Errorf("err = %v, want ErrCodexServerError", err)
+	}
+}
+
+// A stream cut off before response.completed may not have committed the turn,
+// so it must not be reported as a started window.
+func TestSendStarterPing_TruncatedStream(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Length", "1000")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("event: response.created\n\n"))
+	}))
+	defer srv.Close()
+
+	client := NewCodexClient("tok", nil, WithCodexStarterURL(srv.URL))
+	err := client.SendStarterPing(context.Background(), "acct")
+	if !errors.Is(err, ErrCodexNetworkError) {
+		t.Errorf("err = %v, want ErrCodexNetworkError", err)
+	}
+}
+
+// A turn that completed still counts when the connection drops afterwards,
+// and a stream that reports response.failed does not count.
+func TestSendStarterPing_StreamOutcome(t *testing.T) {
+	cases := []struct {
+		name    string
+		body    string
+		length  string
+		wantErr bool
+	}{
+		{"completed then cut off", "event: response.completed\ndata: {}\n\n", "1000", false},
+		{"failed", "event: response.failed\ndata: {}\n\n", "", true},
+		{"ended without completed", "event: response.created\ndata: {}\n\n", "", true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if tc.length != "" {
+					w.Header().Set("Content-Length", tc.length)
+				}
+				w.WriteHeader(http.StatusOK)
+				_, _ = io.WriteString(w, tc.body)
+			}))
+			defer srv.Close()
+
+			client := NewCodexClient("tok", nil, WithCodexStarterURL(srv.URL))
+			err := client.SendStarterPing(context.Background(), "acct")
+			if (err != nil) != tc.wantErr {
+				t.Errorf("err = %v, wantErr %v", err, tc.wantErr)
+			}
+		})
+	}
+}
+
+func TestSSEEventScan_SplitMarker(t *testing.T) {
+	stream := "event: response.created\ndata: {}\n\nevent: response.completed\ndata: {}\n\n"
+	for _, size := range []int{1, 2, 5, 17, 18, 40} {
+		var s sseEventScan
+		for b := []byte(stream); len(b) > 0; {
+			n := min(size, len(b))
+			s.Write(b[:n])
+			b = b[n:]
+		}
+		if !s.completed || s.failed {
+			t.Errorf("chunk size %d: completed=%v failed=%v, want completed only", size, s.completed, s.failed)
+		}
 	}
 }
 

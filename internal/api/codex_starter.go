@@ -128,7 +128,21 @@ func (c *CodexClient) SendStarterPing(ctx context.Context, accountID string) err
 	case resp.StatusCode >= 200 && resp.StatusCode < 300:
 		// Read the whole SSE stream (through response.completed) so the turn
 		// commits and the quota window is anchored. Bounded by ctx.
-		_, _ = io.Copy(io.Discard, resp.Body)
+		var events sseEventScan
+		if _, err := io.Copy(&events, resp.Body); err != nil && !events.completed {
+			// Cut short (deadline or dropped connection) before the turn
+			// completed, so it may not have committed.
+			if ctx.Err() != nil {
+				return ctx.Err()
+			}
+			return fmt.Errorf("%w: reading stream: %v", ErrCodexNetworkError, err)
+		}
+		if events.failed {
+			return fmt.Errorf("codex starter: response failed")
+		}
+		if !events.completed {
+			return fmt.Errorf("codex starter: stream ended without response.completed")
+		}
 		return nil
 	case resp.StatusCode == http.StatusUnauthorized:
 		return ErrCodexUnauthorized
@@ -138,5 +152,42 @@ func (c *CodexClient) SendStarterPing(ctx context.Context, accountID string) err
 		return ErrCodexServerError
 	default:
 		return fmt.Errorf("codex starter: unexpected status code %d", resp.StatusCode)
+	}
+}
+
+// sseEventScan is an io.Writer that watches a Responses event stream for the
+// turn's terminal events, without buffering the stream.
+type sseEventScan struct {
+	tail      []byte
+	completed bool
+	failed    bool
+}
+
+var (
+	sseCompleted = []byte("response.completed")
+	sseFailed    = []byte("response.failed")
+)
+
+func (s *sseEventScan) Write(p []byte) (int, error) {
+	// A marker split across writes shows up in the old tail joined with the
+	// start of p; tail holds the last len(sseCompleted)-1 bytes seen.
+	keep := len(sseCompleted) - 1
+	joined := append(s.tail, p[:min(len(p), keep)]...)
+	s.scan(joined)
+	s.scan(p)
+	if len(p) >= keep {
+		s.tail = append(s.tail[:0], p[len(p)-keep:]...)
+	} else {
+		s.tail = append(s.tail[:0], joined[max(0, len(joined)-keep):]...)
+	}
+	return len(p), nil
+}
+
+func (s *sseEventScan) scan(b []byte) {
+	if bytes.Contains(b, sseCompleted) {
+		s.completed = true
+	}
+	if bytes.Contains(b, sseFailed) {
+		s.failed = true
 	}
 }
