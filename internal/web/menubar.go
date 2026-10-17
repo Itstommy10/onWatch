@@ -768,8 +768,24 @@ func normalizeProviderCard(id, label, subtitle string, payload map[string]interf
 	}
 	status := "healthy"
 	connectionStatus := stringValue(payload, "status")
-	if connectionStatus == "reconnect" || connectionStatus == "stale" {
+	if connectionStatus == "reconnect" || connectionStatus == "stale" || connectionStatus == "paused" {
 		status = "warning"
+	}
+	// A paused account needs re-authentication. That is a warning floor, not a
+	// ceiling: the quota loop below still worsens the status, so a paused
+	// account at 100% keeps showing critical while the tooltip signals re-auth
+	// (#147 review, item 6).
+	paused, _ := payload["paused"].(bool)
+	if paused {
+		status = worsenStatus(status, "warning")
+		connectionStatus = "paused"
+	} else if stale, _ := payload["isStale"].(bool); stale {
+		// A polling-disabled account keeps serving its last snapshot: flag it as
+		// stale so the dot tooltip shows "Updates unavailable" (#147 review).
+		status = worsenStatus(status, "warning")
+		if connectionStatus == "" {
+			connectionStatus = "stale"
+		}
 	}
 	if connection != nil && connection.Reason != "" {
 		status = "warning"
@@ -850,12 +866,19 @@ func normalizeQuotas(payload map[string]interface{}, warningPercent, criticalPer
 			continue
 		}
 		percent := firstFloat(item, "cardPercent", "usagePercent", "percent", "utilization", "remainingPercent")
+		statusLabel := stringValue(item, "statusLabel")
+		percentOnly := false
+		if v, ok := item["percentOnly"].(bool); ok {
+			percentOnly = v
+		}
 		meter := menubar.QuotaMeter{
 			Key:            strings.ToLower(strings.ReplaceAll(label, " ", "_")),
 			Label:          label,
 			DisplayValue:   displayValue(item, percent),
 			Percent:        percent,
 			Status:         quotaStatus(item, percent, warningPercent, criticalPercent),
+			StatusLabel:    statusLabel,
+			PercentOnly:    percentOnly,
 			Used:           firstFloat(item, "usage", "used", "currentUsage", "currentUsed"),
 			Limit:          firstFloat(item, "limit", "total", "currentLimit", "entitlement"),
 			Format:         stringValue(item, "format"),
@@ -881,6 +904,11 @@ func normalizeQuotas(payload map[string]interface{}, warningPercent, criticalPer
 }
 
 func quotaStatus(item map[string]interface{}, percent float64, warningPercent, criticalPercent int) string {
+	// An upstream window status that is not "ok" (OpenCode key mode) is
+	// authoritative: a blocked window is critical whatever its percent.
+	if label := stringValue(item, "statusLabel"); label != "" && !strings.EqualFold(label, "ok") {
+		return "critical"
+	}
 	rawStatus := stringValue(item, "status")
 	if _, ok := item["remainingPercent"]; ok || strings.EqualFold(stringValue(item, "cardLabel"), "Remaining") {
 		if rawStatus != "" {

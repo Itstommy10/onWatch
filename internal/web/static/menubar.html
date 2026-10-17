@@ -20,7 +20,6 @@
             --font-lg: 12px;
             --font-xl: 13px;
 
-            --chart-size: 40px;
             --chart-stroke: 4px;
 
             --bg-body: #0d0d0d;
@@ -37,8 +36,6 @@
             --scrollbar-thumb-soft-hover: rgba(255, 255, 255, 0.25);
             --scrollbar-thumb: rgba(255, 255, 255, 0.22);
             --scrollbar-thumb-hover: rgba(255, 255, 255, 0.32);
-            --quota-center: rgba(0, 0, 0, 0.52);
-            --quota-percent-stroke: rgba(0, 0, 0, 0.82);
             --footer-divider: rgba(255, 255, 255, 0.18);
             --footer-refresh-hover-bg: rgba(255, 255, 255, 0.08);
             --footer-refresh-hover-border: rgba(255, 255, 255, 0.12);
@@ -46,6 +43,9 @@
             --text-primary: #ffffff;
             --text-soft: rgba(255, 255, 255, 0.78);
             --text-muted: rgba(255, 255, 255, 0.5);
+            /* Near-white secondary for dense metadata (reset/usage lines):
+               ~80% opacity clears WCAG AA 4.5:1 on the dark card. */
+            --text-secondary: rgba(255, 255, 255, 0.82);
 
             --healthy: #22c55e;
             --warning: #f59e0b;
@@ -70,14 +70,14 @@
             --scrollbar-thumb-soft-hover: rgba(15, 23, 42, 0.34);
             --scrollbar-thumb: rgba(15, 23, 42, 0.3);
             --scrollbar-thumb-hover: rgba(15, 23, 42, 0.42);
-            --quota-center: rgba(248, 250, 252, 0.92);
-            --quota-percent-stroke: rgba(255, 255, 255, 0.95);
             --footer-divider: rgba(15, 23, 42, 0.26);
             --footer-refresh-hover-bg: rgba(15, 23, 42, 0.1);
             --footer-refresh-hover-border: rgba(15, 23, 42, 0.2);
             --text-primary: #0f172a;
             --text-soft: rgba(15, 23, 42, 0.82);
             --text-muted: rgba(15, 23, 42, 0.62);
+            /* Darker secondary for dense metadata on the light card. */
+            --text-secondary: rgba(15, 23, 42, 0.78);
             --track: rgba(15, 23, 42, 0.12);
             --focus: rgba(37, 99, 235, 0.45);
         }
@@ -481,6 +481,32 @@
             white-space: nowrap;
         }
 
+        /* Default-view header meta: freshness label plus a status dot. The dot
+           carries the status; there is no inline status text. */
+        .provider-meta {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            flex-shrink: 0;
+        }
+
+        .provider-status-dot {
+            width: 6px;
+            height: 6px;
+            border-radius: 999px;
+            background: var(--healthy);
+            flex-shrink: 0;
+        }
+
+        .provider-status-dot.status-warning {
+            background: var(--warning);
+        }
+
+        .provider-status-dot.status-critical,
+        .provider-status-dot.status-danger {
+            background: var(--critical);
+        }
+
         .mistral-recovery {
             gap: var(--space-sm);
             margin: var(--space-sm) 0;
@@ -549,10 +575,20 @@
             align-content: start;
         }
 
+        /* Default view packs cards into explicit rows (computed in JS): each row
+           is a flex line whose cards grow in proportion to their column span, so
+           a row never leaves empty space on the right. */
         .provider-grid-standard {
-            display: grid;
-            grid-template-columns: repeat(6, minmax(0, 1fr));
-            gap: 6px;
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }
+
+        .provider-row {
+            display: flex;
+            align-items: stretch;
+            gap: 5px;
+            min-width: 0;
         }
 
         .provider-grid-detailed {
@@ -568,8 +604,12 @@
         }
 
         .provider-card-standard {
-            grid-column: span var(--card-span, 6);
+            /* --card-span is min(quotaCount, 4); grow keeps row proportions. */
+            flex: var(--card-span, 4) 1 0;
             min-width: 0;
+            gap: 2px;
+            padding: 4px 6px;
+            border-radius: 12px;
         }
 
         .provider-card-detailed {
@@ -579,9 +619,37 @@
 
         .quota-grid {
             display: grid;
-            grid-template-columns: repeat(min(var(--quota-count, 1), 3), minmax(0, 1fr));
-            gap: 1px;
+            /* --quota-cols is ringColumns(count): never orphans a lone ring. */
+            grid-template-columns: repeat(var(--quota-cols, 1), minmax(0, 1fr));
+            gap: 2px;
             min-width: 0;
+        }
+
+        /* Default-view density: big ring tiles, tighter chrome than the detailed
+           view. --ring-size is set per card in JS so a four-quota card keeps its
+           rings from crowding the label at 360px. */
+        .menubar-view-standard {
+            --chart-stroke: 4px;
+            --ring-size: 58px;
+        }
+
+        .menubar-view-standard .provider-header {
+            padding-bottom: 0;
+        }
+
+        .menubar-view-standard .provider-icon {
+            width: 14px;
+            height: 14px;
+            -webkit-mask-size: 14px 14px;
+            mask-size: 14px 14px;
+        }
+
+        .menubar-view-standard .provider-name {
+            font-size: 11px;
+        }
+
+        .menubar-view-standard .provider-copy {
+            gap: 5px;
         }
 
         .supplementary-section {
@@ -636,27 +704,42 @@
             letter-spacing: 0;
         }
 
-        .quota-item {
+        /* Default-view ring tile: the ring carries the percent and the reset
+           countdown, and the full label wraps underneath. No inner box - tiles
+           sit directly on the provider card. */
+        .quota-tile {
             display: flex;
             flex-direction: column;
             align-items: center;
-            gap: 1px;
+            gap: 2px;
             min-width: 0;
             color: var(--healthy);
         }
 
-        .quota-item.status-warning {
+        .quota-tile.status-warning {
             color: var(--warning);
         }
 
-        .quota-item.status-critical,
-        .quota-item.status-danger {
+        .quota-tile.status-critical,
+        .quota-tile.status-danger {
             color: var(--critical);
         }
 
+        .quota-ring {
+            position: relative;
+            display: grid;
+            place-items: center;
+            width: var(--ring-size, 58px);
+            height: var(--ring-size, 58px);
+            max-width: 100%;
+            flex-shrink: 0;
+        }
+
         .quota-meter {
-            width: var(--chart-size);
-            height: var(--chart-size);
+            position: absolute;
+            inset: 0;
+            width: 100%;
+            height: 100%;
             overflow: visible;
         }
 
@@ -675,32 +758,71 @@
             transform-origin: 20px 20px;
         }
 
-        .quota-center {
-            fill: var(--quota-center);
+        .quota-ring-center {
+            position: relative;
+            display: grid;
+            place-items: center;
+            text-align: center;
+            line-height: 1;
+            color: currentColor;
         }
 
-        .quota-percent {
-            fill: var(--text-primary);
-            font-size: 11px;
+        .quota-ring-pct {
+            font-size: calc(var(--ring-size, 58px) * 0.28);
             font-weight: 700;
-            paint-order: stroke;
-            stroke: var(--quota-percent-stroke);
-            stroke-width: 2.2px;
-            stroke-linejoin: round;
+            line-height: 1;
+            letter-spacing: -0.04em;
+            font-variant-numeric: tabular-nums;
         }
 
-        .quota-label {
-            max-width: 80px;
-            color: var(--text-primary);
-            font-size: var(--font-sm);
+        /* Three digits would touch the ring stroke at the default size. */
+        .quota-ring-pct.is-wide {
+            font-size: calc(var(--ring-size, 58px) * 0.225);
+        }
+
+        .quota-ring-pct.is-wide .quota-ring-unit {
+            font-size: calc(var(--ring-size, 58px) * 0.13);
+        }
+
+        .quota-ring-unit {
+            font-size: calc(var(--ring-size, 58px) * 0.155);
+            font-weight: 700;
+            opacity: 0.72;
+            margin-left: 0.5px;
+        }
+
+        .quota-ring-reset {
+            margin-top: calc(var(--ring-size, 58px) * 0.03);
+            font-size: calc(var(--ring-size, 58px) * 0.155);
             font-weight: 500;
-            line-height: 1.05;
+            line-height: 1;
+            color: var(--text-secondary);
+            white-space: nowrap;
+        }
+
+        .quota-tile-label {
+            max-width: 100%;
+            color: var(--text-soft);
+            font-size: 9.5px;
+            font-weight: 550;
+            line-height: 1.1;
+            text-align: center;
+            overflow-wrap: anywhere;
+            hyphens: auto;
+        }
+
+        .quota-tile-usage {
+            max-width: 100%;
+            color: var(--text-muted);
+            font-size: 8.5px;
+            line-height: 1;
             text-align: center;
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
         }
 
+        /* Detailed view reset line (shared by the detailed layout). */
         .quota-reset-line {
             display: inline-flex;
             align-items: center;
@@ -709,17 +831,6 @@
             font-size: 8px;
             line-height: 1;
             white-space: nowrap;
-        }
-
-        .quota-usage-line {
-            font-size: 8px;
-            color: var(--text-muted);
-            opacity: 0.7;
-            white-space: nowrap;
-        }
-
-        .menubar-view-standard .quota-reset-line {
-            font-size: 9px;
         }
 
         .quota-reset-line svg {
@@ -1365,12 +1476,13 @@
                 grid-template-columns: 1fr;
             }
 
-            .provider-grid-standard {
-                grid-template-columns: 1fr;
+            /* Too narrow for 4 columns: stack every card full width. */
+            .provider-row {
+                flex-wrap: wrap;
             }
 
             .provider-card-standard {
-                grid-column: 1 / -1 !important;
+                flex: 1 1 100% !important;
             }
 
         }
@@ -1380,7 +1492,7 @@
                 grid-template-columns: repeat(2, minmax(0, 1fr));
             }
 
-            .quota-item:last-child:nth-child(odd) {
+            .quota-tile:last-child:nth-child(odd) {
                 grid-column: 1 / -1;
             }
         }
@@ -1543,6 +1655,7 @@
             let refreshTimer = null;
             let resizeFrame = 0;
             let resizeTimer = 0;
+            let lastReportedHeight = null;
             let autoSaveTimer = null;
             // Without the recovery script the rest of the quick view must still work.
             const mistralRecovery = !window.MistralRecovery ? { suspended: false, markup: () => "", grantResult() {}, hide() {} } : new window.MistralRecovery({
@@ -1623,6 +1736,17 @@
             settingsBody.addEventListener("drop", handleSettingsDrop);
             settingsBody.addEventListener("dragend", handleSettingsDragEnd);
             window.addEventListener("resize", queueResizeReport);
+            // A host that missed the first report (bridge or iframe listener not
+            // yet ready) must still get a later one. Re-arm the debounce on
+            // visibility/focus so a same-height report is not suppressed forever.
+            const rearmResizeReport = () => {
+                resizeReportDelivered = false;
+                queueResizeReport();
+            };
+            document.addEventListener("visibilitychange", () => {
+                if (!document.hidden) rearmResizeReport();
+            });
+            window.addEventListener("focus", rearmResizeReport);
 
             init();
 
@@ -2226,10 +2350,56 @@
                 });
             }
 
+            const STANDARD_COLUMNS = 4;
+
+            // ringColumns keeps rings from orphaning on their own line: 4 fits
+            // one row, 5 splits 3+2 and 6 splits 3+3. Never exceeds 4. Above 6
+            // (rare) pick the widest column count that leaves no lone ring.
+            function ringColumns(count) {
+                if (count <= 1) return 1;
+                if (count === 2) return 2;
+                if (count === 3) return 3;
+                if (count === 4) return 4;
+                if (count === 5 || count === 6) return 3;
+                for (let columns = 4; columns >= 2; columns--) {
+                    if (count % columns !== 1) return columns;
+                }
+                return 4;
+            }
+
+            // packStandardRows greedily fills rows in the user's provider order
+            // without pulling later cards forward: a card joins the current row
+            // only if its span fits in the columns left, otherwise it starts a
+            // new row. Every row then stretches to the full width via flex-grow.
+            function packStandardRows(providers) {
+                const rows = [];
+                let row = [];
+                let used = 0;
+                providers.forEach((provider) => {
+                    const span = cardSpan(provider);
+                    if (row.length > 0 && used + span > STANDARD_COLUMNS) {
+                        rows.push(row);
+                        row = [];
+                        used = 0;
+                    }
+                    row.push({ provider, span });
+                    used += span;
+                });
+                if (row.length > 0) {
+                    rows.push(row);
+                }
+                return rows;
+            }
+
             function renderStandardView(providers) {
+                const rows = packStandardRows(providers);
                 return `
                     <section class="provider-grid provider-grid-standard">
-                        ${providers.map((provider) => renderStandardCard(provider)).join("")}
+                        ${rows.map((row) => `
+                            <div class="provider-row">
+                                ${row.map(({ provider, span }) => renderStandardCard(provider, span)).join("")}
+                            </div>
+                        `).join("")}
                     </section>
                 `;
             }
@@ -2265,15 +2435,71 @@
                 `;
             }
 
-            function renderStandardCard(provider) {
+            function renderStandardCard(provider, span) {
                 const quotas = providerQuotas(provider);
+                const columns = ringColumns(quotas.length);
+                const ringSize = ringSizeForColumns(columns);
                 return `
-                    <article class="provider-card provider-card-standard status-${escapeHTML(provider.status || "healthy")}" style="--card-span:${cardSpan(provider)};">
-                        ${providerHeaderMarkup(provider)}
-                        <div class="quota-grid" style="--quota-count:${Math.max(quotas.length, 1)};">
+                    <article class="provider-card provider-card-standard status-${escapeHTML(provider.status || "healthy")}" style="--card-span:${span || cardSpan(provider)};">
+                        ${standardHeaderMarkup(provider)}
+                        <div class="quota-grid" style="--quota-cols:${columns};--ring-size:${ringSize}px;">
                             ${quotas.map((quota) => renderStandardQuota(quota)).join("")}
                         </div>
                     </article>
+                `;
+            }
+
+            // ringSizeForColumns shrinks the ring when a card packs more quotas,
+            // so a four-quota card keeps clear space around every label at 360px.
+            function ringSizeForColumns(columns) {
+                if (columns >= 4) return 52;
+                if (columns === 3) return 56;
+                return 58;
+            }
+
+            function standardStatusLabel(provider) {
+                const status = String(provider && provider.status || "healthy");
+                if (status === "critical" || status === "danger") return "Critical";
+                if (status === "warning") return "Warning";
+                return "Healthy";
+            }
+
+            // The status dot carries the status; the tooltip explains a paused or
+            // stale card without inline text (minimal-UI rule, issue #147).
+            function providerDotTitle(provider) {
+                const peak = Math.round(clampPercent(provider && provider.highest_percent));
+                const updated = compactUpdatedLabel(provider && provider.updated_at);
+                const connection = String(provider && provider.connection_status || "");
+                if (connection === "paused") {
+                    return `Re-authentication required - last updated ${updated}`;
+                }
+                if (connection === "stale") {
+                    return `Updates unavailable - last updated ${updated}`;
+                }
+                return `${standardStatusLabel(provider)} - peak ${peak}%`;
+            }
+
+            // standardHeaderMarkup keeps the icon next to a normally colored
+            // name, then a compact right cluster with the freshness label and a
+            // status dot whose tooltip carries the status.
+            function standardHeaderMarkup(provider) {
+                const status = String(provider && provider.status || "healthy");
+                const dotTitle = providerDotTitle(provider);
+                return `
+                    <div class="provider-header">
+                        <div class="provider-copy">
+                            <span class="provider-icon ${escapeHTML(providerIconClass(provider))}" aria-hidden="true"></span>
+                            <span class="provider-name">${escapeHTML(provider.label)}</span>
+                            ${provider.connection?.reason === 'browser_access_denied' ? '<span class="quota-source-tag">Browser access required</span>' : provider.connection_status === 'reconnect' ? '<span class="quota-source-tag">Reconnect required</span>' : provider.connection_status === 'stale' ? '<span class="quota-source-tag">Updates unavailable</span>' : ''}
+                            ${provider.promo ? `<a class="promo-tag ${isPromoOffPeak(provider.promo) ? 'promo-offpeak' : 'promo-peak'}" href="https://www.reddit.com/r/ClaudeAI/comments/1s4idaq/update_on_session_limits/" target="_blank" rel="noopener noreferrer" onclick="event.stopPropagation()">${escapeHTML(promoLabel(provider.promo))}</a>` : ''}
+                        </div>
+                        <span class="provider-meta">
+                            <span class="provider-updated">${escapeHTML(compactUpdatedLabel(provider.updated_at))}</span>
+                            <span class="provider-status-dot status-${escapeHTML(status)}" title="${escapeHTML(dotTitle)}" aria-label="${escapeHTML(dotTitle)}"></span>
+                        </span>
+                    </div>
+ ${provider.base_provider === "mistral" && provider.subtitle ? `<div class="quota-detail-meta">${escapeHTML(provider.subtitle)}</div>` : ""}
+ ${provider.base_provider === 'mistral' ? mistralRecovery.markup(provider.connection, provider.connection_status) : ''}
                 `;
             }
 
@@ -2299,14 +2525,39 @@
             }
 
             function renderStandardQuota(quota) {
+                const percent = clampPercent(quota.percent);
                 const usage = usageSummary(quota);
+                const statusNote = quotaStatusNote(quota);
+                const label = fullQuotaLabel(quota);
+                const fullLabel = label + statusNote;
+                const fullValue = usage ? `${usage} used` : `${Math.round(percent)}%`;
+                const reset = compactResetLabel(quota);
+                const resetTitle = `Resets ${quota.time_until_reset || quota.reset_at || 'unknown'}`;
                 return `
-                    <div class="quota-item status-${escapeHTML(quota.status || "healthy")}">
-                        ${pieChartMarkup(quota)}
-                        <span class="quota-label">${escapeHTML(compactQuotaLabel(quota.label, quota.key))}</span>
-                        <span class="quota-reset-line">${icons.clock}<span>${escapeHTML(compactResetLabel(quota))}</span></span>
-                        ${usage ? `<span class="quota-usage-line">${escapeHTML(usage)} used</span>` : ''}
-                        ${sourceTagMarkup(quota)}
+                    <div class="quota-tile status-${escapeHTML(quota.status || "healthy")}">
+                        ${ringMarkup(percent, fullLabel, reset, resetTitle)}
+                        <span class="quota-tile-label" title="${escapeHTML(fullLabel)}">${escapeHTML(label)}</span>
+                        ${usage ? `<span class="quota-tile-usage" title="${escapeHTML(fullValue)}">${escapeHTML(usage)}</span>` : ''}
+                    </div>
+                `;
+            }
+
+            // ringMarkup draws the percent and the reset countdown inside the
+            // ring; the full label and usage live below the ring as tile text.
+            function ringMarkup(percent, fullLabel, reset, resetTitle) {
+                const circumference = 2 * Math.PI * 15.5;
+                const dash = (percent / 100) * circumference;
+                return `
+                    <div class="quota-ring">
+                        <svg class="quota-meter" viewBox="0 0 40 40" aria-hidden="true">
+                            <title>${escapeHTML(fullLabel)}: ${Math.round(percent)}%</title>
+                            <circle class="quota-track" cx="20" cy="20" r="15.5"></circle>
+                            <circle class="quota-fill" cx="20" cy="20" r="15.5" stroke-dasharray="${dash.toFixed(2)} ${circumference.toFixed(2)}"></circle>
+                        </svg>
+                        <span class="quota-ring-center">
+                            <span class="quota-ring-pct${Math.round(percent) >= 100 ? ' is-wide' : ''}">${Math.round(percent)}<span class="quota-ring-unit">%</span></span>
+                            <span class="quota-ring-reset" title="${escapeHTML(resetTitle)}">${escapeHTML(reset)}</span>
+                        </span>
                     </div>
                 `;
             }
@@ -2318,7 +2569,7 @@
                 return `
                     <section class="quota-detail-section status-${escapeHTML(quota.status || "healthy")}">
                         <div class="quota-detail-head">
-                            <span class="quota-detail-label">${escapeHTML(quota.label || compactQuotaLabel(quota.label, quota.key))} ${sourceTagMarkup(quota)}</span>
+                            <span class="quota-detail-label">${escapeHTML((quota.label || compactQuotaLabel(quota.label, quota.key)) + quotaStatusNote(quota))} ${sourceTagMarkup(quota)}</span>
                             <span class="quota-reset-line">${icons.clock}<span>${escapeHTML(compactResetLabel(quota))}</span></span>
                         </div>
 
@@ -2344,27 +2595,13 @@
                         <div class="provider-copy">
                             <span class="provider-icon ${escapeHTML(providerIconClass(provider))}" aria-hidden="true"></span>
                             <span class="provider-name">${escapeHTML(provider.label)}</span>
-                            ${provider.connection?.reason === 'browser_access_denied' ? '<span class="quota-source-tag">Browser access required</span>' : provider.connection_status === 'reconnect' ? '<span class="quota-source-tag">Reconnect required</span>' : provider.connection_status === 'stale' ? '<span class="quota-source-tag">Updates unavailable</span>' : ''}
+                            ${provider.connection?.reason === 'browser_access_denied' ? '<span class="quota-source-tag">Browser access required</span>' : provider.connection_status === 'reconnect' ? '<span class="quota-source-tag">Reconnect required</span>' : provider.connection_status === 'stale' ? '<span class="quota-source-tag">Updates unavailable</span>' : provider.connection_status === 'paused' ? '<span class="quota-source-tag">Re-auth required</span>' : ''}
                             ${provider.promo ? `<a class="promo-tag ${isPromoOffPeak(provider.promo) ? 'promo-offpeak' : 'promo-peak'}" href="https://www.reddit.com/r/ClaudeAI/comments/1s4idaq/update_on_session_limits/" target="_blank" rel="noopener noreferrer" onclick="event.stopPropagation()">${escapeHTML(promoLabel(provider.promo))}</a>` : ''}
                         </div>
                         <span class="provider-updated">${escapeHTML(compactUpdatedLabel(provider.updated_at))}</span>
                     </div>
  ${provider.base_provider === "mistral" && provider.subtitle ? `<div class="quota-detail-meta">${escapeHTML(provider.subtitle)}</div>` : ""}
  ${provider.base_provider === 'mistral' ? mistralRecovery.markup(provider.connection, provider.connection_status) : ''}
-                `;
-            }
-
-            function pieChartMarkup(quota) {
-                const percent = clampPercent(quota.percent);
-                const circumference = 97.389;
-                const dash = (percent / 100) * circumference;
-                return `
-                    <svg class="quota-meter" viewBox="0 0 40 40" width="40" height="40" aria-hidden="true">
-                        <circle class="quota-track" cx="20" cy="20" r="15.5"></circle>
-                        <circle class="quota-fill" cx="20" cy="20" r="15.5" stroke-dasharray="${dash.toFixed(2)} ${circumference.toFixed(2)}"></circle>
-                        <circle class="quota-center" cx="20" cy="20" r="10.5"></circle>
-                        <text class="quota-percent" x="20" y="23" text-anchor="middle">${Math.round(percent)}%</text>
-                    </svg>
                 `;
             }
 
@@ -2400,15 +2637,11 @@
                 return Array.isArray(provider && provider.quotas) ? provider.quotas : [];
             }
 
+            // cardSpan is how many of the 4 columns a card occupies:
+            // min(quotaCount, 4). Empty cards still take one column.
             function cardSpan(provider) {
                 const count = providerQuotas(provider).length;
-                if (count >= 3) {
-                    return 6;
-                }
-                if (count === 2) {
-                    return 4;
-                }
-                return 2;
+                return Math.max(1, Math.min(count, STANDARD_COLUMNS));
             }
 
             function buildAggregate(providers) {
@@ -2651,13 +2884,19 @@
                 const clientHeight = Math.ceil(element.clientHeight || 0);
                 const scrollHeight = Math.ceil(element.scrollHeight || 0);
                 const offsetHeight = Math.ceil(element.offsetHeight || 0);
+                // Children are positioned against their nearest offsetParent (the
+                // shell), so child.offsetTop includes the header and would be
+                // counted twice once the header height is added back. Measure the
+                // bottom edge relative to this element's own top instead.
+                const elementTop = element.getBoundingClientRect().top;
+                const padBottom = parseFloat(window.getComputedStyle(element).paddingBottom || "0") || 0;
                 let contentHeight = 0;
                 for (const child of element.children) {
                     if (child instanceof HTMLElement) {
-                        contentHeight = Math.max(contentHeight, Math.ceil(child.offsetTop + child.offsetHeight));
+                        contentHeight = Math.max(contentHeight, Math.ceil(child.getBoundingClientRect().bottom - elementTop));
                     }
                 }
-                contentHeight += measuredPaddingY(element);
+                contentHeight += padBottom;
                 if (scrollHeight > clientHeight + 1) {
                     return Math.max(scrollHeight, contentHeight);
                 }
@@ -2665,16 +2904,10 @@
             }
 
             function preferredResizeFloor() {
-                if (state.settingsOpen) {
-                    return 320;
-                }
-                if (state.view === "detailed") {
-                    return 500;
-                }
-                if (state.view === "minimal") {
-                    return 140;
-                }
-                return 320;
+                // A single sensible minimum for every layout: header, one card
+                // and the footer. Anything larger would leave empty space below
+                // the last card when a provider list is short.
+                return 140;
             }
 
             function measuredContentHeight() {
@@ -2690,9 +2923,40 @@
                     + (measuredGapY(shell) * 2);
             }
 
+            function preferredResizeCeiling() {
+                // Mirror the native clamp: never grow past the built-in ceiling or
+                // the screen's visible height minus a small margin.
+                let ceiling = 720;
+                const screenHeight = Number(window.screen && (window.screen.availHeight || window.screen.height));
+                if (Number.isFinite(screenHeight) && screenHeight > 0) {
+                    ceiling = Math.min(ceiling, Math.floor(screenHeight) - 24);
+                }
+                return Math.max(preferredResizeFloor(), ceiling);
+            }
+
+            // True once a report has actually reached a host channel. Until then
+            // the 2px debounce is disabled, because a report that fires before
+            // the native bridge / iframe parent listener is ready would be lost
+            // and a same-height retry would be suppressed forever.
+            let resizeReportDelivered = false;
+
+            function resizeHostPresent() {
+                return !!(
+                    (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.onwatchResize)
+                    || (window.parent && window.parent !== window)
+                );
+            }
+
             function reportPreferredHeight() {
                 const measured = Math.ceil(measuredContentHeight());
-                const height = Math.max(preferredResizeFloor(), Math.min(720, measured));
+                const height = Math.max(preferredResizeFloor(), Math.min(preferredResizeCeiling(), measured));
+                // Debounce: a sub-2px change is layout noise, not a real resize.
+                // Skipped until the first report has been delivered, so a report
+                // lost to a not-yet-ready host is retried on the next signal.
+                if (resizeReportDelivered && lastReportedHeight !== null && Math.abs(height - lastReportedHeight) < 2) {
+                    return;
+                }
+                lastReportedHeight = height;
                 const payload = { type: "resize", height };
                 window.postMessage(payload, "*");
                 if (window.parent && window.parent !== window) {
@@ -2700,6 +2964,11 @@
                 }
                 if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.onwatchResize) {
                     window.webkit.messageHandlers.onwatchResize.postMessage({ height });
+                }
+                // Consider the report delivered only when a host channel exists.
+                // A bare window.postMessage with no listener is not delivery.
+                if (resizeHostPresent()) {
+                    resizeReportDelivered = true;
                 }
             }
 
@@ -2859,7 +3128,23 @@
                 return value > 0 && value < 0.01 ? value.toFixed(3) : value.toFixed(2);
             }
 
+            // quotaStatusNote renders the provider's raw window status as a
+            // tooltip suffix. Empty for a healthy ("ok") or absent status so
+            // normal quotas stay uncluttered; an unknown value is shown as-is.
+            function quotaStatusNote(quota) {
+                const label = quota.status_label;
+                if (!label || String(label).toLowerCase() === "ok") return "";
+                return ` - ${label}`;
+            }
+
             function usageSummary(quota) {
+                // Percent-only quotas (OpenCode key mode) report a bare percent
+                // with a synthetic limit of 100. Showing "8/100 used" would be a
+                // fake fraction, so no usage line is drawn: the ring already
+                // carries the percent, exactly as for a quota with no used/limit.
+                if (quota.percent_only) {
+                    return "";
+                }
                 const limit = Number(quota.limit);
                 const used = Number(quota.used);
                 if (Number.isFinite(limit) && limit > 0 && Number.isFinite(used) && used >= 0) {
@@ -2942,7 +3227,10 @@
                 return normalized;
             }
 
-            function compactQuotaLabel(label, key) {
+            // quotaLabelSemantic maps a quota's key/label to a known short name,
+            // or "" when nothing matches. Shared by the truncating compact label
+            // and the wrapping full label so both agree on the wording.
+            function quotaLabelSemantic(label, key) {
                 const source = `${String(key || "").toLowerCase()} ${String(label || "").toLowerCase()}`;
                 if (source.includes("weekly sonnet") || source.includes("weekly_sonnet")) {
                     return "Wkly Son";
@@ -3028,8 +3316,34 @@
                 if (source.includes("requests")) {
                     return "Req";
                 }
+                return "";
+            }
+
+            function compactQuotaLabel(label, key) {
+                const semantic = quotaLabelSemantic(label, key);
+                if (semantic) {
+                    return semantic;
+                }
                 const text = String(label || key || "Quota").trim();
                 return text.length > 10 ? text.slice(0, 10) : text;
+            }
+
+            // fullQuotaLabel is the wrapping tile label: it keeps the semantic
+            // short names but never hard-truncates, so "Weekly Credits" and
+            // "Gemini Weekly" read in full. Claude + GPT windows keep their
+            // window suffix ("Cl+GPT Weekly").
+            function fullQuotaLabel(quota) {
+                const label = String(quota && quota.label || "").trim();
+                const key = String(quota && quota.key || "");
+                const source = `${key.toLowerCase()} ${label.toLowerCase()}`;
+                if (source.includes("claude + gpt") || source.includes("claude_+_gpt")) {
+                    return label.replace(/claude\s*\+\s*gpt/i, "Cl+GPT");
+                }
+                const semantic = quotaLabelSemantic(label, key);
+                if (semantic) {
+                    return semantic;
+                }
+                return label || key || "Quota";
             }
 
             function compactProviderName(label) {
