@@ -508,3 +508,63 @@ func buildEnterpriseQuotas(usage *CursorUsageResponse, requestUsage *CursorReque
 
 	return quotas
 }
+
+// UnmarshalJSON accepts the integer fields of spendLimitUsage either as JSON
+// numbers or as numeric strings. Cursor returns some of them as strings
+// (e.g. "pooledLimit":"0" on free accounts), which broke decoding of the whole
+// usage response. Empty or non-numeric strings decode as 0.
+func (u *CursorSpendLimitUsage) UnmarshalJSON(data []byte) error {
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	ints := map[string]*int{
+		"totalSpend":          &u.TotalSpend,
+		"pooledLimit":         &u.PooledLimit,
+		"pooledUsed":          &u.PooledUsed,
+		"pooledRemaining":     &u.PooledRemaining,
+		"individualLimit":     &u.IndividualLimit,
+		"individualUsed":      &u.IndividualUsed,
+		"individualRemaining": &u.IndividualRemaining,
+	}
+	for key, dst := range ints {
+		v, ok := raw[key]
+		if !ok {
+			continue
+		}
+		n, err := flexibleInt(v)
+		if err != nil {
+			return fmt.Errorf("cursor: spendLimitUsage.%s: %w", key, err)
+		}
+		*dst = n
+	}
+	if v, ok := raw["limitType"]; ok && string(v) != "null" {
+		if err := json.Unmarshal(v, &u.LimitType); err != nil {
+			return fmt.Errorf("cursor: spendLimitUsage.limitType: %w", err)
+		}
+	}
+	return nil
+}
+
+// flexibleInt decodes a JSON number, numeric string, empty string or null as int.
+func flexibleInt(v json.RawMessage) (int, error) {
+	s := strings.TrimSpace(string(v))
+	if s == "" || s == "null" {
+		return 0, nil
+	}
+	if s[0] == 0x22 {
+		var str string
+		if err := json.Unmarshal(v, &str); err != nil {
+			return 0, err
+		}
+		s = strings.TrimSpace(str)
+		if s == "" {
+			return 0, nil
+		}
+	}
+	f, err := strconv.ParseFloat(s, 64)
+	if err != nil {
+		return 0, nil
+	}
+	return int(f), nil
+}
